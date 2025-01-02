@@ -2,106 +2,115 @@ import streamlit as st
 from firestore_connection import db
 from datetime import date
 
-st.set_page_config(page_title="Rodadas e Jogos")
+st.set_page_config(page_title="Rodadas e Jogos", layout="wide")
 
 st.title("Gerenciar Rodadas e Jogos")
 
 # ---------------------------
 # Funções Auxiliares
 # ---------------------------
-def get_all_players():
-    docs = db.collection("players").stream()
-    players_dict = {}
-    for d in docs:
-        pd = d.to_dict()
-        players_dict[pd['name']] = d.id
-    return players_dict
-
-def registrar_jogo(rodada_id, time1, time2, gols_time1, gols_time2, detalhes_gols):
-    doc_ref = db.collection("games").document()
-    data_jogo = {
-        "rodada_id": rodada_id,
-        "time1": time1,
-        "time2": time2,
-        "gols_time1": gols_time1,
-        "gols_time2": gols_time2,
-        "detalhes_gols": detalhes_gols
+def inicializar_rodada(rodada_numero):
+    return {
+        "numero": rodada_numero,
+        "data": str(date.today()),
+        "jogos": [],
+        "tabela": {
+            "A": {"pontos": 0, "gols_pro": 0, "gols_contra": 0},
+            "B": {"pontos": 0, "gols_pro": 0, "gols_contra": 0},
+            "C": {"pontos": 0, "gols_pro": 0, "gols_contra": 0},
+            "D": {"pontos": 0, "gols_pro": 0, "gols_contra": 0},
+        },
     }
-    doc_ref.set(data_jogo)
-    st.success(f"Jogo salvo com sucesso! ID: {doc_ref.id}")
+
+def atualizar_tabela(rodada, lado_perri, lado_neve, gols_perri, gols_neve):
+    if gols_perri > gols_neve:
+        rodada["tabela"][lado_perri]["pontos"] += 3
+    elif gols_perri < gols_neve:
+        rodada["tabela"][lado_neve]["pontos"] += 3
+    else:
+        rodada["tabela"][lado_perri]["pontos"] += 1
+        rodada["tabela"][lado_neve]["pontos"] += 1
+
+    rodada["tabela"][lado_perri]["gols_pro"] += gols_perri
+    rodada["tabela"][lado_perri]["gols_contra"] += gols_neve
+    rodada["tabela"][lado_neve]["gols_pro"] += gols_neve
+    rodada["tabela"][lado_neve]["gols_contra"] += gols_perri
+
+def salvar_rodada(rodada):
+    doc_ref = db.collection("rodadas").document(str(rodada["numero"]))
+    doc_ref.set(rodada)
+    st.success(f"Rodada {rodada['numero']} salva com sucesso!")
+
+# ---------------------------
+# Configuração de Estado
+# ---------------------------
+if "rodada" not in st.session_state:
+    st.session_state.rodada = inicializar_rodada(1)
 
 # ---------------------------
 # Interface para Registro
 # ---------------------------
-st.subheader("Registrar Partida")
+rodada = st.session_state.rodada
+st.subheader(f"Rodada {rodada['numero']} - {rodada['data']}")
 
-rodada_id = st.text_input("Rodada (Número)", value="1")
+# Seleção dos Times para o Jogo Atual
+st.markdown("### Adicionar Jogo")
+col1, col2 = st.columns(2)
+with col1:
+    lado_perri = st.selectbox("Lado Perri (Time)", ["A", "B", "C", "D"], key="lado_perri")
+with col2:
+    lado_neve = st.selectbox("Lado Neve (Time)", ["A", "B", "C", "D"], key="lado_neve")
+
+# Controle do Placar
+if "gols_perri" not in st.session_state:
+    st.session_state.gols_perri = 0
+if "gols_neve" not in st.session_state:
+    st.session_state.gols_neve = 0
 
 col1, col2 = st.columns(2)
 with col1:
-    time1 = st.selectbox("Lado 1 (Time)", ["A", "B", "C", "D"])
+    if st.button("+1 Lado Perri"):
+        st.session_state.gols_perri += 1
 with col2:
-    time2 = st.selectbox("Lado 2 (Time)", ["A", "B", "C", "D"])
+    if st.button("+1 Lado Neve"):
+        st.session_state.gols_neve += 1
 
-# Inicializar placar e detalhes
-if "gols_time1" not in st.session_state:
-    st.session_state.gols_time1 = 0
-if "gols_time2" not in st.session_state:
-    st.session_state.gols_time2 = 0
-if "detalhes_gols" not in st.session_state:
-    st.session_state.detalhes_gols = []
+st.markdown(f"#### Placar Atual: {st.session_state.gols_perri} - {st.session_state.gols_neve}")
 
-# Exibir placar
-st.markdown(f"### Placar: {st.session_state.gols_time1} - {st.session_state.gols_time2}")
-
-# Listar jogadores disponíveis
-players_dict = get_all_players()
-opcoes_jogadores = ["sem autor"] + list(players_dict.keys())
-
-# Botões para adicionar gols
-col1, col2 = st.columns(2)
-with col1:
-    if st.button("Adicionar Gol (Lado 1)"):
-        st.session_state.gols_time1 += 1
-        st.session_state.detalhes_gols.append({
-            "lado": "time1",
-            "gol": None,
-            "assistencia": None
-        })
-with col2:
-    if st.button("Adicionar Gol (Lado 2)"):
-        st.session_state.gols_time2 += 1
-        st.session_state.detalhes_gols.append({
-            "lado": "time2",
-            "gol": None,
-            "assistencia": None
-        })
-
-# Preencher detalhes dos gols
-for idx, gol in enumerate(st.session_state.detalhes_gols):
-    st.markdown(f"### Gol #{idx + 1}")
+# Seleção de Gols e Assistências
+st.markdown("### Gols e Assistências")
+detalhes_gols = []
+for i in range(st.session_state.gols_perri + st.session_state.gols_neve):
+    st.markdown(f"Gol #{i + 1}")
     col1, col2 = st.columns(2)
     with col1:
-        jogador_gol = st.selectbox(f"Autor do Gol (Gol #{idx + 1})", opcoes_jogadores, key=f"gol_{idx}")
-        st.session_state.detalhes_gols[idx]["gol"] = jogador_gol if jogador_gol != "sem autor" else None
+        autor_gol = st.selectbox(f"Autor do Gol (#{i + 1})", ["sem autor"] + ["Jogador 1", "Jogador 2"], key=f"gol_{i}")
     with col2:
-        jogador_ass = st.selectbox(f"Assistência (Gol #{idx + 1})", opcoes_jogadores, key=f"assist_{idx}")
-        st.session_state.detalhes_gols[idx]["assistencia"] = jogador_ass if jogador_ass != "sem autor" else None
+        assistencia = st.selectbox(f"Assistência (#{i + 1})", ["sem assistência"] + ["Jogador 1", "Jogador 2"], key=f"assist_{i}")
+    detalhes_gols.append({"gol": autor_gol, "assistencia": assistencia})
 
-# Botão para salvar o jogo
+# Salvar Jogo
 if st.button("Salvar Jogo"):
-    if rodada_id.strip():
-        registrar_jogo(
-            rodada_id=rodada_id,
-            time1=time1,
-            time2=time2,
-            gols_time1=st.session_state.gols_time1,
-            gols_time2=st.session_state.gols_time2,
-            detalhes_gols=st.session_state.detalhes_gols
-        )
-        # Resetar o estado
-        st.session_state.gols_time1 = 0
-        st.session_state.gols_time2 = 0
-        st.session_state.detalhes_gols = []
-    else:
-        st.warning("Por favor, insira o número da rodada!")
+    rodada["jogos"].append({
+        "lado_perri": lado_perri,
+        "lado_neve": lado_neve,
+        "gols_perri": st.session_state.gols_perri,
+        "gols_neve": st.session_state.gols_neve,
+        "detalhes_gols": detalhes_gols,
+    })
+    atualizar_tabela(rodada, lado_perri, lado_neve, st.session_state.gols_perri, st.session_state.gols_neve)
+    st.session_state.gols_perri = 0
+    st.session_state.gols_neve = 0
+    st.success("Jogo salvo com sucesso!")
+
+# Mostrar Tabela da Rodada
+st.markdown("### Tabela da Rodada")
+tabela = rodada["tabela"]
+for time, dados in tabela.items():
+    st.markdown(f"- **Time {time}**: {dados['pontos']} pontos, {dados['gols_pro']} gols pró, {dados['gols_contra']} gols contra")
+
+# Encerrar Rodada
+if st.button("Encerrar Rodada"):
+    salvar_rodada(rodada)
+    st.session_state.rodada = inicializar_rodada(rodada["numero"] + 1)
+    st.success("Rodada encerrada e pronta para a próxima!")
