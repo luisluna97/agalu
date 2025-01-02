@@ -22,6 +22,13 @@ def inicializar_rodada(rodada_numero):
         },
     }
 
+def get_registered_players():
+    docs = db.collection("players").stream()
+    players = ["sem autor"]
+    for doc in docs:
+        players.append(doc.to_dict()["name"])
+    return players
+
 def atualizar_tabela(rodada, lado_perri, lado_neve, gols_perri, gols_neve):
     if gols_perri > gols_neve:
         rodada["tabela"][lado_perri]["pontos"] += 3
@@ -47,13 +54,19 @@ def salvar_rodada(rodada):
 if "rodada" not in st.session_state:
     st.session_state.rodada = inicializar_rodada(1)
 
-# ---------------------------
-# Interface para Registro
-# ---------------------------
+if "gols_perri" not in st.session_state:
+    st.session_state.gols_perri = 0
+if "gols_neve" not in st.session_state:
+    st.session_state.gols_neve = 0
+if "detalhes_gols" not in st.session_state:
+    st.session_state.detalhes_gols = []
+
 rodada = st.session_state.rodada
 st.subheader(f"Rodada {rodada['numero']} - {rodada['data']}")
 
+# ---------------------------
 # Seleção dos Times para o Jogo Atual
+# ---------------------------
 st.markdown("### Adicionar Jogo")
 col1, col2 = st.columns(2)
 with col1:
@@ -62,32 +75,36 @@ with col2:
     lado_neve = st.selectbox("Lado Neve (Time)", ["A", "B", "C", "D"], key="lado_neve")
 
 # Controle do Placar
-if "gols_perri" not in st.session_state:
-    st.session_state.gols_perri = 0
-if "gols_neve" not in st.session_state:
-    st.session_state.gols_neve = 0
-
 col1, col2 = st.columns(2)
 with col1:
     if st.button("+1 Lado Perri"):
         st.session_state.gols_perri += 1
+        st.session_state.detalhes_gols.append({"lado": "time1", "gol": None, "assistencia": None})
+    if st.button("-1 Lado Perri") and st.session_state.gols_perri > 0:
+        st.session_state.gols_perri -= 1
+        st.session_state.detalhes_gols.pop()
 with col2:
     if st.button("+1 Lado Neve"):
         st.session_state.gols_neve += 1
+        st.session_state.detalhes_gols.append({"lado": "time2", "gol": None, "assistencia": None})
+    if st.button("-1 Lado Neve") and st.session_state.gols_neve > 0:
+        st.session_state.gols_neve -= 1
+        st.session_state.detalhes_gols.pop()
 
 st.markdown(f"#### Placar Atual: {st.session_state.gols_perri} - {st.session_state.gols_neve}")
 
 # Seleção de Gols e Assistências
 st.markdown("### Gols e Assistências")
-detalhes_gols = []
-for i in range(st.session_state.gols_perri + st.session_state.gols_neve):
-    st.markdown(f"Gol #{i + 1}")
+players = get_registered_players()
+for idx, gol in enumerate(st.session_state.detalhes_gols):
+    st.markdown(f"Gol #{idx + 1}")
     col1, col2 = st.columns(2)
     with col1:
-        autor_gol = st.selectbox(f"Autor do Gol (#{i + 1})", ["sem autor"] + ["Jogador 1", "Jogador 2"], key=f"gol_{i}")
+        jogador_gol = st.selectbox(f"Autor do Gol (#{idx + 1})", players, key=f"gol_{idx}")
+        st.session_state.detalhes_gols[idx]["gol"] = jogador_gol if jogador_gol != "sem autor" else None
     with col2:
-        assistencia = st.selectbox(f"Assistência (#{i + 1})", ["sem assistência"] + ["Jogador 1", "Jogador 2"], key=f"assist_{i}")
-    detalhes_gols.append({"gol": autor_gol, "assistencia": assistencia})
+        jogador_ass = st.selectbox(f"Assistência (#{idx + 1})", players, key=f"assist_{idx}")
+        st.session_state.detalhes_gols[idx]["assistencia"] = jogador_ass if jogador_ass != "sem autor" else None
 
 # Salvar Jogo
 if st.button("Salvar Jogo"):
@@ -96,12 +113,22 @@ if st.button("Salvar Jogo"):
         "lado_neve": lado_neve,
         "gols_perri": st.session_state.gols_perri,
         "gols_neve": st.session_state.gols_neve,
-        "detalhes_gols": detalhes_gols,
+        "detalhes_gols": st.session_state.detalhes_gols.copy(),
     })
     atualizar_tabela(rodada, lado_perri, lado_neve, st.session_state.gols_perri, st.session_state.gols_neve)
     st.session_state.gols_perri = 0
     st.session_state.gols_neve = 0
+    st.session_state.detalhes_gols = []
     st.success("Jogo salvo com sucesso!")
+
+# Mostrar Histórico de Jogos
+st.markdown("### Jogos da Rodada")
+for jogo in rodada["jogos"]:
+    st.markdown(f"**{jogo['lado_perri']} {jogo['gols_perri']} x {jogo['gols_neve']} {jogo['lado_neve']}**")
+    for detalhe in jogo["detalhes_gols"]:
+        gol = detalhe["gol"] or "sem autor"
+        assist = detalhe["assistencia"] or "sem assistência"
+        st.markdown(f"- Gol: {gol}, Assistência: {assist}")
 
 # Mostrar Tabela da Rodada
 st.markdown("### Tabela da Rodada")
