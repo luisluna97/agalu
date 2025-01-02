@@ -8,10 +8,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.title("Liga Agalu - Bem-vindo!")
-st.write("Este é o sistema de gestão do campeonato, com estatísticas e cadastro de jogadores/rodadas.")
-st.markdown("---")
+st.title("Liga Agalu")
+st.write("A MAIOR LIGA DE FUTEBOL AMADOR DE RECIFE")
+st.markdown("Toda quinta às 20h no PSG")
 st.markdown("Navegue pelas **páginas** no menu lateral ou na parte superior para acessar cada funcionalidade.")
 
 # Exemplo de rodapé ou algo
-st.markdown("© 2023 Liga Agalu")
+st.markdown("© 2022 Liga Agalu")
